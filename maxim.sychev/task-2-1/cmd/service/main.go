@@ -19,10 +19,10 @@ const (
 
 var (
 	errReadInt      = errors.New("read int")
-	errReadN        = errors.New("read N")
-	errReadK        = errors.New("read K")
-	errNRange       = errors.New("N out of range")
-	errKRange       = errors.New("K out of range")
+	errReadN        = errors.New("read n")
+	errReadK        = errors.New("read k")
+	errNRange       = errors.New("n out of range")
+	errKRange       = errors.New("k out of range")
 	errReadOperator = errors.New("unexpected end of input")
 	errUnknownOp    = errors.New("unknown operator")
 	errReadTemp     = errors.New("expected temperature")
@@ -33,7 +33,7 @@ func readInt(reader *bufio.Reader) (int, error) {
 	var value int
 
 	if _, err := fmt.Fscan(reader, &value); err != nil {
-		return 0, fmt.Errorf("%w: %v", errReadInt, err)
+		return 0, fmt.Errorf("%w: %w", errReadInt, err)
 	}
 
 	return value, nil
@@ -42,7 +42,7 @@ func readInt(reader *bufio.Reader) (int, error) {
 func readDeptCount(reader *bufio.Reader) (int, error) {
 	value, err := readInt(reader)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %v", errReadN, err)
+		return 0, fmt.Errorf("%w: %w", errReadN, err)
 	}
 
 	if value < minDepts || value > maxDepts {
@@ -56,7 +56,7 @@ func readDeptCount(reader *bufio.Reader) (int, error) {
 func readEmpCount(reader *bufio.Reader, dept int) (int, error) {
 	value, err := readInt(reader)
 	if err != nil {
-		return 0, fmt.Errorf("%w: department %d: %v", errReadK, dept, err)
+		return 0, fmt.Errorf("%w: department %d: %w", errReadK, dept, err)
 	}
 
 	if value < minEmps || value > maxEmps {
@@ -74,7 +74,7 @@ func readConstraint(
 	var operator string
 
 	if _, err := fmt.Fscan(reader, &operator); err != nil {
-		return "", 0, fmt.Errorf("%w: department %d, employee %d/%d: %v",
+		return "", 0, fmt.Errorf("%w: department %d, employee %d/%d: %w",
 			errReadOperator, dept, employee, total, err)
 	}
 
@@ -85,7 +85,7 @@ func readConstraint(
 
 	value, err := readInt(reader)
 	if err != nil {
-		return "", 0, fmt.Errorf("%w after %q: department %d, employee %d/%d: %v",
+		return "", 0, fmt.Errorf("%w after %q: department %d, employee %d/%d: %w",
 			errReadTemp, operator, dept, employee, total, err)
 	}
 
@@ -109,7 +109,7 @@ func applyConstraint(low, high int, operator string, value int) (int, int) {
 
 func printLine(writer *bufio.Writer, s string) error {
 	if _, err := fmt.Fprintln(writer, s); err != nil {
-		return fmt.Errorf("%w: %v", errWriteLine, err)
+		return fmt.Errorf("%w: %w", errWriteLine, err)
 	}
 
 	return nil
