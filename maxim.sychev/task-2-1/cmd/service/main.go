@@ -15,64 +15,140 @@ const (
 	maxTemp  = 30
 )
 
+func readInt(r *bufio.Reader) (int, error) {
+	var value int
+
+	if _, err := fmt.Fscan(r, &value); err != nil {
+		return 0, fmt.Errorf("read int: %w", err)
+	}
+
+	return value, nil
+}
+
+func readDeptCount(r *bufio.Reader) (int, error) {
+	value, err := readInt(r)
+	if err != nil {
+		return 0, fmt.Errorf("read N: %w", err)
+	}
+
+	if value < minDepts || value > maxDepts {
+		return 0, fmt.Errorf("N=%d out of range [%d..%d]", value, minDepts, maxDepts)
+	}
+
+	return value, nil
+}
+
+func readEmpCount(r *bufio.Reader, dept int) (int, error) {
+	value, err := readInt(r)
+	if err != nil {
+		return 0, fmt.Errorf("read K for department %d: %w", dept, err)
+	}
+
+	if value < minEmps || value > maxEmps {
+		return 0, fmt.Errorf("K=%d for department %d out of range [%d..%d]",
+			value, dept, minEmps, maxEmps)
+	}
+
+	return value, nil
+}
+
+func readConstraint(r *bufio.Reader, dept, emp, total int) (string, int, error) {
+	var operator string
+
+	if _, err := fmt.Fscan(r, &operator); err != nil {
+		return "", 0, fmt.Errorf(
+			"unexpected end of input (department %d, employee %d/%d): %w",
+			dept, emp, total, err,
+		)
+	}
+
+	if operator != ">=" && operator != "<=" {
+		return "", 0, fmt.Errorf("unknown operator %q (department %d, employee %d)",
+			operator, dept, emp)
+	}
+
+	value, err := readInt(r)
+	if err != nil {
+		return "", 0, fmt.Errorf("expected temperature after %q (department %d, employee %d/%d): %w",
+			operator, dept, emp, total, err)
+	}
+
+	return operator, value, nil
+}
+
+func applyConstraint(low, high int, operator string, value int) (int, int) {
+	switch operator {
+	case ">=":
+		if value > low {
+			low = value
+		}
+	case "<=":
+		if value < high {
+			high = value
+		}
+	}
+
+	return low, high
+}
+
+func printLine(w *bufio.Writer, s string) error {
+	if _, err := fmt.Fprintln(w, s); err != nil {
+		return fmt.Errorf("write line: %w", err)
+	}
+
+	return nil
+}
+
+func processDepartment(r *bufio.Reader, w *bufio.Writer, dept, total int) error {
+	employees, err := readEmpCount(r, dept)
+	if err != nil {
+		return err
+	}
+
+	low, high := minTemp, maxTemp
+
+	for emp := range employees {
+		operator, value, consErr := readConstraint(r, dept, emp+1, employees)
+		if consErr != nil {
+			return consErr
+		}
+
+		low, high = applyConstraint(low, high, operator, value)
+
+		if low <= high {
+			if err = printLine(w, fmt.Sprintf("%d", low)); err != nil {
+				return err
+			}
+		} else {
+			if err = printLine(w, "-1"); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func main() {
-	in := bufio.NewReader(os.Stdin)
-	out := bufio.NewWriter(os.Stdout)
-	defer out.Flush()
+	reader := bufio.NewReader(os.Stdin)
+	writer := bufio.NewWriter(os.Stdout)
 
-	var n int
-	if _, err := fmt.Fscan(in, &n); err != nil {
-		fmt.Fprintln(out, "error: failed to read N:", err)
+	defer func() {
+		_ = writer.Flush()
+	}()
+
+	departments, err := readDeptCount(reader)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+
 		return
 	}
-	if n < minDepts || n > maxDepts {
-		fmt.Fprintf(out, "error: N=%d out of range [%d..%d]\n", n, minDepts, maxDepts)
-		return
-	}
 
-	for dept := 0; dept < n; dept++ {
-		var k int
-		if _, err := fmt.Fscan(in, &k); err != nil {
-			fmt.Fprintf(out, "error: failed to read K for department %d: %v\n", dept+1, err)
+	for dept := range departments {
+		if err = processDepartment(reader, writer, dept+1, departments); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+
 			return
-		}
-		if k < minEmps || k > maxEmps {
-			fmt.Fprintf(out, "error: K=%d for department %d out of range [%d..%d]\n",
-				k, dept+1, minEmps, maxEmps)
-			return
-		}
-
-		low, high := minTemp, maxTemp
-
-		for emp := 0; emp < k; emp++ {
-			var op string
-			var t int
-			if _, err := fmt.Fscan(in, &op, &t); err != nil {
-				fmt.Fprintf(out, "error: unexpected end of input (department %d, employee %d/%d): %v\n",
-					dept+1, emp+1, k, err)
-				return
-			}
-
-			switch op {
-			case ">=":
-				if t > low {
-					low = t
-				}
-			case "<=":
-				if t < high {
-					high = t
-				}
-			default:
-				fmt.Fprintf(out, "error: unknown operator %q (department %d, employee %d)\n",
-					op, dept+1, emp+1)
-				return
-			}
-
-			if low <= high {
-				fmt.Fprintln(out, low)
-			} else {
-				fmt.Fprintln(out, -1)
-			}
 		}
 	}
 }
