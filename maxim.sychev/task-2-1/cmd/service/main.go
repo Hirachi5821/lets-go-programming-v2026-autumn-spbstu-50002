@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 )
 
 const (
@@ -15,62 +17,76 @@ const (
 	maxTemp  = 30
 )
 
-func readInt(r *bufio.Reader) (int, error) {
+var (
+	errReadInt      = errors.New("read int")
+	errReadN        = errors.New("read N")
+	errReadK        = errors.New("read K")
+	errNRange       = errors.New("N out of range")
+	errKRange       = errors.New("K out of range")
+	errReadOperator = errors.New("unexpected end of input")
+	errUnknownOp    = errors.New("unknown operator")
+	errReadTemp     = errors.New("expected temperature")
+	errWriteLine    = errors.New("write line")
+)
+
+func readInt(reader *bufio.Reader) (int, error) {
 	var value int
 
-	if _, err := fmt.Fscan(r, &value); err != nil {
-		return 0, fmt.Errorf("read int: %w", err)
+	if _, err := fmt.Fscan(reader, &value); err != nil {
+		return 0, fmt.Errorf("%w: %v", errReadInt, err)
 	}
 
 	return value, nil
 }
 
-func readDeptCount(r *bufio.Reader) (int, error) {
-	value, err := readInt(r)
+func readDeptCount(reader *bufio.Reader) (int, error) {
+	value, err := readInt(reader)
 	if err != nil {
-		return 0, fmt.Errorf("read N: %w", err)
+		return 0, fmt.Errorf("%w: %v", errReadN, err)
 	}
 
 	if value < minDepts || value > maxDepts {
-		return 0, fmt.Errorf("N=%d out of range [%d..%d]", value, minDepts, maxDepts)
+		return 0, fmt.Errorf("%w: N=%d, range [%d..%d]",
+			errNRange, value, minDepts, maxDepts)
 	}
 
 	return value, nil
 }
 
-func readEmpCount(r *bufio.Reader, dept int) (int, error) {
-	value, err := readInt(r)
+func readEmpCount(reader *bufio.Reader, dept int) (int, error) {
+	value, err := readInt(reader)
 	if err != nil {
-		return 0, fmt.Errorf("read K for department %d: %w", dept, err)
+		return 0, fmt.Errorf("%w: department %d: %v", errReadK, dept, err)
 	}
 
 	if value < minEmps || value > maxEmps {
-		return 0, fmt.Errorf("K=%d for department %d out of range [%d..%d]",
-			value, dept, minEmps, maxEmps)
+		return 0, fmt.Errorf("%w: K=%d, department %d, range [%d..%d]",
+			errKRange, value, dept, minEmps, maxEmps)
 	}
 
 	return value, nil
 }
 
-func readConstraint(r *bufio.Reader, dept, emp, total int) (string, int, error) {
+func readConstraint(
+	reader *bufio.Reader,
+	dept, employee, total int,
+) (string, int, error) {
 	var operator string
 
-	if _, err := fmt.Fscan(r, &operator); err != nil {
-		return "", 0, fmt.Errorf(
-			"unexpected end of input (department %d, employee %d/%d): %w",
-			dept, emp, total, err,
-		)
+	if _, err := fmt.Fscan(reader, &operator); err != nil {
+		return "", 0, fmt.Errorf("%w: department %d, employee %d/%d: %v",
+			errReadOperator, dept, employee, total, err)
 	}
 
 	if operator != ">=" && operator != "<=" {
-		return "", 0, fmt.Errorf("unknown operator %q (department %d, employee %d)",
-			operator, dept, emp)
+		return "", 0, fmt.Errorf("%w: %q, department %d, employee %d",
+			errUnknownOp, operator, dept, employee)
 	}
 
-	value, err := readInt(r)
+	value, err := readInt(reader)
 	if err != nil {
-		return "", 0, fmt.Errorf("expected temperature after %q (department %d, employee %d/%d): %w",
-			operator, dept, emp, total, err)
+		return "", 0, fmt.Errorf("%w after %q: department %d, employee %d/%d: %v",
+			errReadTemp, operator, dept, employee, total, err)
 	}
 
 	return operator, value, nil
@@ -91,16 +107,24 @@ func applyConstraint(low, high int, operator string, value int) (int, int) {
 	return low, high
 }
 
-func printLine(w *bufio.Writer, s string) error {
-	if _, err := fmt.Fprintln(w, s); err != nil {
-		return fmt.Errorf("write line: %w", err)
+func printLine(writer *bufio.Writer, s string) error {
+	if _, err := fmt.Fprintln(writer, s); err != nil {
+		return fmt.Errorf("%w: %v", errWriteLine, err)
 	}
 
 	return nil
 }
 
-func processDepartment(r *bufio.Reader, w *bufio.Writer, dept, total int) error {
-	employees, err := readEmpCount(r, dept)
+func printResult(writer *bufio.Writer, low, high int) error {
+	if low <= high {
+		return printLine(writer, strconv.Itoa(low))
+	}
+
+	return printLine(writer, "-1")
+}
+
+func processDepartment(reader *bufio.Reader, writer *bufio.Writer, dept int) error {
+	employees, err := readEmpCount(reader, dept)
 	if err != nil {
 		return err
 	}
@@ -108,25 +132,23 @@ func processDepartment(r *bufio.Reader, w *bufio.Writer, dept, total int) error 
 	low, high := minTemp, maxTemp
 
 	for emp := range employees {
-		operator, value, consErr := readConstraint(r, dept, emp+1, employees)
+		operator, value, consErr := readConstraint(reader, dept, emp+1, employees)
 		if consErr != nil {
 			return consErr
 		}
 
 		low, high = applyConstraint(low, high, operator, value)
 
-		if low <= high {
-			if err = printLine(w, fmt.Sprintf("%d", low)); err != nil {
-				return err
-			}
-		} else {
-			if err = printLine(w, "-1"); err != nil {
-				return err
-			}
+		if err = printResult(writer, low, high); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+func logError(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, "error:", err)
 }
 
 func main() {
@@ -139,14 +161,14 @@ func main() {
 
 	departments, err := readDeptCount(reader)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		logError(err)
 
 		return
 	}
 
 	for dept := range departments {
-		if err = processDepartment(reader, writer, dept+1, departments); err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
+		if err = processDepartment(reader, writer, dept+1); err != nil {
+			logError(err)
 
 			return
 		}
