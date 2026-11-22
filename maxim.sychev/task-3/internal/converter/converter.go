@@ -130,9 +130,15 @@ func readCurrencies(path string) ([]Currency, error) {
 }
 
 func parseCurrency(item currencyXML) (Currency, error) {
-	numCode, err := strconv.Atoi(strings.TrimSpace(item.NumCode))
-	if err != nil {
-		return Currency{}, fmt.Errorf("invalid NumCode %q: %w", item.NumCode, err)
+	numCode := 0
+
+	if code := strings.TrimSpace(item.NumCode); code != "" {
+		parsed, err := strconv.Atoi(code)
+		if err != nil {
+			return Currency{}, fmt.Errorf("invalid NumCode %q: %w", item.NumCode, err)
+		}
+
+		numCode = parsed
 	}
 
 	valueText := strings.ReplaceAll(strings.TrimSpace(item.Value), ",", ".")
