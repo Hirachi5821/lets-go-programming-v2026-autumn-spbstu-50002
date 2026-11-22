@@ -15,29 +15,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type FileError struct {
-	Operation string
-	Path      string
-	Err       error
-}
-
-func (e *FileError) Error() string {
-	return fmt.Sprintf("%s %q: %v", e.Operation, e.Path, e.Err)
-}
-
-func (e *FileError) Unwrap() error { return e.Err }
-
-type DecodeError struct {
-	Format string
-	Err    error
-}
-
-func (e *DecodeError) Error() string {
-	return fmt.Sprintf("decode %s: %v", e.Format, e.Err)
-}
-
-func (e *DecodeError) Unwrap() error { return e.Err }
-
 type config struct {
 	InputFile  string `yaml:"input-file"`
 	OutputFile string `yaml:"output-file"`
@@ -62,7 +39,7 @@ type Currency struct {
 
 func Run(configPath string) error {
 	if configPath == "" {
-		return &DecodeError{Format: "configuration", Err: fmt.Errorf("--config is required")}
+		return fmt.Errorf("--config is required")
 	}
 
 	cfg, err := readConfig(configPath)
@@ -85,17 +62,17 @@ func Run(configPath string) error {
 func readConfig(path string) (config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return config{}, &FileError{Operation: "read", Path: path, Err: err}
+		return config{}, fmt.Errorf("read configuration %q: %w", path, err)
 	}
 
 	var cfg config
 	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
-		return config{}, &DecodeError{Format: "YAML", Err: err}
+		return config{}, fmt.Errorf("decode YAML: %w", err)
 	}
 	if cfg.InputFile == "" || cfg.OutputFile == "" {
-		return config{}, &DecodeError{Format: "YAML", Err: fmt.Errorf("input-file and output-file are required")}
+		return config{}, fmt.Errorf("input-file and output-file are required")
 	}
 
 	return cfg, nil
@@ -104,14 +81,14 @@ func readConfig(path string) (config, error) {
 func readCurrencies(path string) ([]Currency, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, &FileError{Operation: "read", Path: path, Err: err}
+		return nil, fmt.Errorf("read XML file %q: %w", path, err)
 	}
 
 	var input currenciesXML
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	decoder.CharsetReader = charset.NewReaderLabel
 	if err := decoder.Decode(&input); err != nil {
-		return nil, &DecodeError{Format: "XML", Err: err}
+		return nil, fmt.Errorf("decode XML: %w", err)
 	}
 
 	result := make([]Currency, 0, len(input.Items))
@@ -133,15 +110,18 @@ func readCurrencies(path string) ([]Currency, error) {
 }
 
 func parseCurrency(item currencyXML) (Currency, error) {
+	if strings.TrimSpace(item.CharCode) == "" {
+		return Currency{}, fmt.Errorf("missing CharCode")
+	}
 	numCode, err := strconv.Atoi(strings.TrimSpace(item.NumCode))
 	if err != nil {
-		return Currency{}, &DecodeError{Format: "NumCode", Err: err}
+		return Currency{}, fmt.Errorf("invalid NumCode %q: %w", item.NumCode, err)
 	}
 
 	valueText := strings.ReplaceAll(strings.TrimSpace(item.Value), ",", ".")
 	value, err := strconv.ParseFloat(valueText, 64)
 	if err != nil {
-		return Currency{}, &DecodeError{Format: "Value", Err: err}
+		return Currency{}, fmt.Errorf("invalid Value %q: %w", item.Value, err)
 	}
 
 	return Currency{NumCode: numCode, CharCode: strings.TrimSpace(item.CharCode), Value: value}, nil
@@ -150,16 +130,16 @@ func parseCurrency(item currencyXML) (Currency, error) {
 func writeCurrencies(path string, currencies []Currency) error {
 	parent := filepath.Dir(path)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return &FileError{Operation: "create directory", Path: parent, Err: err}
+		return fmt.Errorf("create output directory %q: %w", parent, err)
 	}
 
 	data, err := json.MarshalIndent(currencies, "", "  ")
 	if err != nil {
-		return &DecodeError{Format: "JSON", Err: err}
+		return fmt.Errorf("encode JSON: %w", err)
 	}
 	data = append(data, '\n')
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return &FileError{Operation: "write", Path: path, Err: err}
+		return fmt.Errorf("write JSON file %q: %w", path, err)
 	}
 	return nil
 }
