@@ -1,0 +1,2 @@
+input-file: "testdata/input_ties.xml"
+output-file: ".output/ties/result.json"

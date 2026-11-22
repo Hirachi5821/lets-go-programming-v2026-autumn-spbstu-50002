@@ -1,0 +1,2 @@
+input-file: "testdata/input_whitespace.xml"
+output-file: ".output/whitespace/result.json"

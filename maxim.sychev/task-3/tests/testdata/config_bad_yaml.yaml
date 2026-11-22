@@ -1,0 +1,3 @@
+input-file: "testdata/input_malformed.xml"
+output-file: ".output/malformed/result.json"
+  broken: indentation

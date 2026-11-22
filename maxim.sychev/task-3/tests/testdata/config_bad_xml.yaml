@@ -1,0 +1,2 @@
+input-file: "testdata/input_malformed.xml"
+output-file: ".output/bad_xml/result.json"
