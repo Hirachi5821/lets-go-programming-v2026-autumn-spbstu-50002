@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,16 @@ import (
 
 	"golang.org/x/net/html/charset"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	directoryPermissions = 0o755
+	outputPermissions    = 0o600
+)
+
+var (
+	errConfigRequired = errors.New("--config is required")
+	errConfigFields   = errors.New("input-file and output-file are required")
 )
 
 type config struct {
@@ -39,7 +50,7 @@ type Currency struct {
 
 func Run(configPath string) error {
 	if configPath == "" {
-		return fmt.Errorf("--config is required")
+		return errConfigRequired
 	}
 
 	cfg, err := readConfig(configPath)
@@ -66,13 +77,16 @@ func readConfig(path string) (config, error) {
 	}
 
 	var cfg config
+
 	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
 	decoder.KnownFields(true)
+
 	if err := decoder.Decode(&cfg); err != nil {
 		return config{}, fmt.Errorf("decode YAML: %w", err)
 	}
+
 	if cfg.InputFile == "" || cfg.OutputFile == "" {
-		return config{}, fmt.Errorf("input-file and output-file are required")
+		return config{}, errConfigFields
 	}
 
 	return cfg, nil
@@ -85,18 +99,22 @@ func readCurrencies(path string) ([]Currency, error) {
 	}
 
 	var input currenciesXML
+
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	decoder.CharsetReader = charset.NewReaderLabel
+
 	if err := decoder.Decode(&input); err != nil {
 		return nil, fmt.Errorf("decode XML: %w", err)
 	}
 
 	result := make([]Currency, 0, len(input.Items))
+
 	for _, item := range input.Items {
 		currency, err := parseCurrency(item)
 		if err != nil {
 			return nil, fmt.Errorf("parse currency %q: %w", item.CharCode, err)
 		}
+
 		result = append(result, currency)
 	}
 
@@ -104,21 +122,21 @@ func readCurrencies(path string) ([]Currency, error) {
 		if result[i].Value == result[j].Value {
 			return result[i].CharCode < result[j].CharCode
 		}
+
 		return result[i].Value > result[j].Value
 	})
+
 	return result, nil
 }
 
 func parseCurrency(item currencyXML) (Currency, error) {
-	if strings.TrimSpace(item.CharCode) == "" {
-		return Currency{}, fmt.Errorf("missing CharCode")
-	}
 	numCode, err := strconv.Atoi(strings.TrimSpace(item.NumCode))
 	if err != nil {
 		return Currency{}, fmt.Errorf("invalid NumCode %q: %w", item.NumCode, err)
 	}
 
 	valueText := strings.ReplaceAll(strings.TrimSpace(item.Value), ",", ".")
+
 	value, err := strconv.ParseFloat(valueText, 64)
 	if err != nil {
 		return Currency{}, fmt.Errorf("invalid Value %q: %w", item.Value, err)
@@ -129,7 +147,7 @@ func parseCurrency(item currencyXML) (Currency, error) {
 
 func writeCurrencies(path string, currencies []Currency) error {
 	parent := filepath.Dir(path)
-	if err := os.MkdirAll(parent, 0o755); err != nil {
+	if err := os.MkdirAll(parent, directoryPermissions); err != nil {
 		return fmt.Errorf("create output directory %q: %w", parent, err)
 	}
 
@@ -137,9 +155,12 @@ func writeCurrencies(path string, currencies []Currency) error {
 	if err != nil {
 		return fmt.Errorf("encode JSON: %w", err)
 	}
+
 	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+
+	if err := os.WriteFile(path, data, outputPermissions); err != nil {
 		return fmt.Errorf("write JSON file %q: %w", path, err)
 	}
+
 	return nil
 }
