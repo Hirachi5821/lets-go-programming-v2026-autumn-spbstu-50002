@@ -1,2 +1,0 @@
-input-file: "testdata/does_not_exist.xml"
-output-file: ".output/missing/result.json"
